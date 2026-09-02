@@ -4,11 +4,53 @@
 
 const int SPAWN_INTERVAL_MS = 1200;
 const int SPEED_MIN = 3;
-const int SPEED_RANGE = 4;   // car speed = SPEED_MIN .. SPEED_MIN + SPEED_RANGE - 1 (px/step)
+const int SPEED_RANGE = 4;  // car speed = SPEED_MIN .. SPEED_MIN + SPEED_RANGE - 1 (px/step)
+const int STEP_MS = 16; 
 
 CarManager::CarManager(int windowHeight) {
     this->windowHeight = windowHeight;
     this->lastSpawnMs = 0;
+    this->stopFlag = false;
+}
+
+CarManager::~CarManager() {
+    stop();
+
+    for (int i = 0; i < (int)cars.size(); i++) {
+        delete cars[i];
+    }
+}
+
+void CarManager::start() {
+    updateThread = std::thread(&CarManager::updateLoop, this);
+}
+
+void CarManager::stop() {
+    carMutex.lock();
+    stopFlag = true;
+    carMutex.unlock();
+
+    if (updateThread.joinable()) {
+        updateThread.join();
+    }
+}
+
+// Design 2: one thread spawns, moves and cleans up every car.
+void CarManager::updateLoop() {
+    while (true) {
+        carMutex.lock();
+        bool stop = stopFlag;
+        carMutex.unlock();
+        if (stop == true) {
+            break;
+        }
+
+        spawnCars();
+        updateAll();
+        removeFinishedCars();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+    }
 }
 
 long CarManager::nowMs() {
@@ -40,22 +82,6 @@ int CarManager::pickFreeLane() {
     return chosen;
 }
 
-void CarManager::createCar() {
-    carMutex.lock();
-
-    int lane = pickFreeLane();
-    if (lane >= 0) {
-        int speed = SPEED_MIN + (rand() % SPEED_RANGE);
-        EnemyCar* car = new EnemyCar(lane, speed);
-        cars.push_back(car);
-
-        std::thread carThread(&EnemyCar::run, car, this, windowHeight);
-        threads.push_back(std::move(carThread));
-    }
-
-    carMutex.unlock();
-}
-
 void CarManager::spawnCars() {
     long now = nowMs();
     if (now - lastSpawnMs >= SPAWN_INTERVAL_MS) {
@@ -64,8 +90,53 @@ void CarManager::spawnCars() {
     }
 }
 
+void CarManager::createCar() {
+    carMutex.lock();
+
+    int lane = pickFreeLane();
+    if (lane >= 0) {
+        int speed = SPEED_MIN + (rand() % SPEED_RANGE);
+        EnemyCar* car = new EnemyCar(lane, speed);
+        cars.push_back(car);
+    }
+
+    carMutex.unlock();
+}
+
+
+void CarManager::updateAll() {
+    carMutex.lock();
+
+    for (int i = 0; i < (int)cars.size(); i++) {
+        EnemyCar* car = cars[i];
+        if (car->isFinished() == true) {
+            continue;
+        }
+
+        bool blocked = false;
+        for (int j = 0; j < (int)cars.size(); j++) {
+            EnemyCar* other = cars[j];
+            if (other != car && other->getLane() == car->getLane()) {
+                int gap = other->getY() - car->getY();
+                if (gap > 0 && gap < CAR_GAP) {
+                    blocked = true;
+                }
+            }
+        }
+
+        if (blocked == false) {
+            car->moveForward();
+        }
+
+        if (car->getY() >= windowHeight) {
+            car->setFinished();
+        }
+    }
+
+    carMutex.unlock();
+}
+
 void CarManager::removeFinishedCars() {
-    std::vector<std::thread> doneThreads;
     std::vector<EnemyCar*> doneCars;
 
     carMutex.lock();
@@ -73,10 +144,8 @@ void CarManager::removeFinishedCars() {
     int i = 0;
     while (i < (int)cars.size()) {
         if (cars[i]->isFinished() == true) {
-            doneThreads.push_back(std::move(threads[i]));
             doneCars.push_back(cars[i]);
             cars.erase(cars.begin() + i);
-            threads.erase(threads.begin() + i);
         }
         else {
             i = i + 1;
@@ -85,41 +154,9 @@ void CarManager::removeFinishedCars() {
 
     carMutex.unlock();
 
-    for (int j = 0; j < (int)doneThreads.size(); j++) {
-        doneThreads[j].join();
+    for (int j = 0; j < (int)doneCars.size(); j++) {
         delete doneCars[j];
     }
-}
-
-bool CarManager::updateCar(EnemyCar* car, int yLimit) {
-    carMutex.lock();
-
-    bool blocked = false;
-    for (int i = 0; i < (int)cars.size(); i++) {
-        EnemyCar* other = cars[i];
-        if (other != car && other->getLane() == car->getLane()) {
-            int gap = other->getY() - car->getY();
-            if (gap > 0 && gap < CAR_GAP) {
-                blocked = true;
-            }
-        }
-    }
-
-    if (blocked == false) {
-        car->moveForward();
-    }
-
-    bool reachedEnd = false;
-    if (car->getY() >= yLimit) {
-        reachedEnd = true;
-    }
-
-    carMutex.unlock();
-
-    if (reachedEnd == true) {
-        car->setFinished();
-    }
-    return reachedEnd;
 }
 
 std::vector<CarState> CarManager::getSnapshot() {

@@ -1,15 +1,9 @@
 #ifndef CAR_H
 #define CAR_H
 
-#include <mutex>
-
 const int NUM_LANES = 3;
 const int NUM_VARIANTS = 5;
-const int CAR_GAP = 130;  
-
-using namespace std;
-
-class CarManager;   
+const int CAR_GAP = 130;
 
 class EnemyCar {
     private:
@@ -20,7 +14,6 @@ class EnemyCar {
     int variant;
 
     bool finished;
-    mutex finishedMutex;
 
     static int nextId;
 
@@ -30,14 +23,11 @@ class EnemyCar {
     int getId();
     int getLane();
     int getY();
-    int getSpeed();
     int getVariant();
 
     bool isFinished();
     void setFinished();
     void moveForward();
-
-    void run(CarManager* manager, int yLimit);
 };
 
 #endif
