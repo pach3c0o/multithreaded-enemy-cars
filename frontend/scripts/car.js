@@ -53,22 +53,21 @@ class Car {
 
 /**
  * Enemy Car class
- * Randomly selects a sprite and spawns at specified lane positions
+ * One enemy car driven by the backend. Its sprite (variant) is fixed by the
+ * backend and its position comes from the socket every frame.
  */
 class EnemyCar extends Car {
-  constructor(app, boundLeft, boundRight, boundBottom, speed) {
-    // Get a random enemy sprite
-    const texture = app.loader.resources[`enemy${randomBetween(1, 5)}`].texture;
-    super(app, texture, boundLeft, boundRight, boundBottom, speed);
+  constructor(app, variant, laneToX) {
+    // variant is 0..4, textures are enemy1..enemy5
+    const index = Math.min(Math.max(variant, 0), 4) + 1;
+    const texture = app.loader.resources[`enemy${index}`].texture;
+    super(app, texture, 0, 0, 0, 0);
+
+    this.laneToX = laneToX;
   }
 
-  invoke(lanesQ, lanesPosition) {
-    // const whichLane = randomBetween(1, lanesQ);  // Randomly select a lane
-    // const laneToPushEnemy = lanesPosition[whichLane - 1]; // Get the position of the selected lane
-    // this.setPosition(laneToPushEnemy.x, -this.sprite.height);
-
-    this.setPosition(290, -30); // Set a fixed position for testing purposes
-    
+  updateFromServer(lane, y) {
+    this.setPosition(this.laneToX(lane), y);
   }
 }
 

@@ -1,8 +1,8 @@
 FROM japeto/so-tools:v64
 
 WORKDIR /app
-COPY server.cpp .
-RUN g++ server.cpp -o server -pthread
+COPY *.cpp *.h ./
+RUN g++ -std=c++11 -O2 *.cpp -o server -pthread
 EXPOSE 5000
 
 CMD ["./server"]

@@ -44,8 +44,8 @@ Services:
 Frontend:
 http://localhost:8080
 
-Backend:
-wss://localhost:5000
+Backend (WebSocket):
+ws://localhost:5000
 
 ## General Assignment Tasks
 
