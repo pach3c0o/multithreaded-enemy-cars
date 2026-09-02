@@ -16,22 +16,28 @@ struct CarState {
 
 class CarManager {
     private:
-    std::mutex carMutex;                 
+    std::mutex carMutex;
     std::vector<EnemyCar*> cars;
-    std::vector<std::thread> threads;
+    std::thread updateThread;
+    bool stopFlag;
     int windowHeight;
     long lastSpawnMs;
 
-    int pickFreeLane();                  
+    int pickFreeLane();
     long nowMs();
+
+    void updateLoop();
+    void spawnCars();
+    void createCar();
+    void updateAll();
+    void removeFinishedCars();
 
     public:
     CarManager(int windowHeight);
+    ~CarManager();
 
-    void createCar();
-    void spawnCars();
-    void removeFinishedCars();
-    bool updateCar(EnemyCar* car, int yLimit);   
+    void start();
+    void stop();
     std::vector<CarState> getSnapshot();
 };
 

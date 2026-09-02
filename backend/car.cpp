@@ -1,8 +1,5 @@
-#include <thread>
-#include <chrono>
 #include <cstdlib>
 #include "car.h"
-#include "car_manager.h"
 
 int EnemyCar::nextId = 1;
 
@@ -29,37 +26,19 @@ int EnemyCar::getY() {
     return this->y;
 }
 
-int EnemyCar::getSpeed() {
-    return this->speed;
-}
-
 int EnemyCar::getVariant() {
     return this->variant;
 }
 
+// Only the update thread touches these, so no lock is needed here.
 bool EnemyCar::isFinished() {
-    std::unique_lock<std::mutex> lock(this->finishedMutex);
-    bool value = this->finished;
-    lock.unlock();
-    return value;
+    return this->finished;
 }
 
 void EnemyCar::setFinished() {
-    std::unique_lock<std::mutex> lock(this->finishedMutex);
     this->finished = true;
-    lock.unlock();
 }
 
 void EnemyCar::moveForward() {
     this->y = this->y + this->speed;
-}
-
-void EnemyCar::run(CarManager* manager, int yLimit) {
-    bool done = false;
-    while (done == false) {
-        done = manager->updateCar(this, yLimit);
-        if (done == false) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        }
-    }
 }

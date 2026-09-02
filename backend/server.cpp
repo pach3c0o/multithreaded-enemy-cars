@@ -10,8 +10,8 @@
 #include "ws_server.h"
 
 const int PORT = 5000;
-const int WINDOW_HEIGHT = 840;   
-const int BROADCAST_MS = 33;     
+const int WINDOW_HEIGHT = 840;
+const int BROADCAST_MS = 33;
 
 
 std::string buildJson(const std::vector<CarState>& cars) {
@@ -36,14 +36,12 @@ int main() {
     srand((unsigned int)time(NULL));
 
     CarManager manager(WINDOW_HEIGHT);
+    manager.start();
 
     WsServer server(PORT);
     server.start();
-    
-    while (true) {
-        manager.spawnCars();
-        manager.removeFinishedCars();
 
+    while (true) {
         std::vector<CarState> snapshot = manager.getSnapshot();
         std::string message = buildJson(snapshot);
         server.broadcast(message);
