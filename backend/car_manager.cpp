@@ -21,8 +21,14 @@ CarManager::~CarManager() {
     }
 }
 
+// Design 3: spawn/cleanup stay on one thread; one more thread per car
+// variant moves only the cars of its own variant.
 void CarManager::start() {
-    updateThread = std::thread(&CarManager::updateLoop, this);
+    spawnThread = std::thread(&CarManager::spawnLoop, this);
+
+    for (int variant = 0; variant < NUM_VARIANTS; variant++) {
+        moveThreads[variant] = std::thread(&CarManager::moveLoop, this, variant);
+    }
 }
 
 void CarManager::stop() {
@@ -30,20 +36,28 @@ void CarManager::stop() {
     stopFlag = true;
     carMutex.unlock();
 
-    if (updateThread.joinable()) {
-        updateThread.join();
+    if (spawnThread.joinable()) {
+        spawnThread.join();
+    }
+    for (int variant = 0; variant < NUM_VARIANTS; variant++) {
+        if (moveThreads[variant].joinable()) {
+            moveThreads[variant].join();
+        }
     }
 }
 
-// Design 2: one thread spawns, moves and cleans up every car.
-void CarManager::updateLoop() {
-    carMutex.lock();
-    bool stop = stopFlag;
-    carMutex.unlock();
+
+void CarManager::spawnLoop() {
+    while (true) {
+        carMutex.lock();
+        bool stop = stopFlag;
+        carMutex.unlock();
+        if (stop == true) {
+            break;
+        }
 
     while (!stop) {
         spawnCars();
-        updateAll();
         removeFinishedCars();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
@@ -51,6 +65,22 @@ void CarManager::updateLoop() {
         carMutex.lock();
         stop = stopFlag;
         carMutex.unlock();
+    }
+}
+
+
+void CarManager::moveLoop(int variant) {
+    while (true) {
+        carMutex.lock();
+        bool stop = stopFlag;
+        carMutex.unlock();
+        if (stop == true) {
+            break;
+        }
+
+        moveVariant(variant);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
     }
 }
 
@@ -105,32 +135,34 @@ void CarManager::createCar() {
 }
 
 
-void CarManager::updateAll() {
+void CarManager::moveVariant(int variant) {
     carMutex.lock();
 
     for (int i = 0; i < (int)cars.size(); i++) {
         EnemyCar* car = cars[i];
-        if (car->isFinished() == true) {
-            continue;
-        }
+        bool mine = car->getVariant() == variant && car->isFinished() == false;
 
-        bool blocked = false;
-        for (int j = 0; j < (int)cars.size(); j++) {
-            EnemyCar* other = cars[j];
-            if (other != car && other->getLane() == car->getLane()) {
-                int gap = other->getY() - car->getY();
-                if (gap > 0 && gap < CAR_GAP) {
-                    blocked = true;
+        if (mine == true) {
+            bool blocked = false;
+            for (int j = 0; j < (int)cars.size(); j++) {
+                if (blocked == false) {
+                    EnemyCar* other = cars[j];
+                    if (other != car && other->getLane() == car->getLane()) {
+                        int gap = other->getY() - car->getY();
+                        if (gap > 0 && gap < CAR_GAP) {
+                            blocked = true;
+                        }
+                    }
                 }
             }
-        }
 
-        if (blocked == false) {
-            car->moveForward();
-        }
+            if (blocked == false) {
+                car->moveForward();
+            }
 
-        if (car->getY() >= windowHeight) {
-            car->setFinished();
+            if (car->getY() >= windowHeight) {
+                car->setFinished();
+            }
         }
     }
 
