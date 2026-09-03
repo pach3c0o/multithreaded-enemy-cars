@@ -2,10 +2,12 @@
 #define CAR_MANAGER_H
 
 #include <vector>
+#include <queue>
 #include <thread>
 #include <mutex>
 #include "car.h"
 
+const int POOL_SIZE = 4;
 
 struct CarState {
     int id;
@@ -16,10 +18,14 @@ struct CarState {
 
 class CarManager {
     private:
-    std::mutex carMutex;
+    std::mutex carMutex;    
+    std::mutex queueMutex; 
     std::vector<EnemyCar*> cars;
-    std::thread spawnThread;
-    std::thread moveThreads[NUM_VARIANTS];
+    std::queue<EnemyCar*> taskQueue;
+    int pendingTasks;  
+
+    std::thread producerThread;
+    std::thread workerThreads[POOL_SIZE];
     bool stopFlag;
     int windowHeight;
     long lastSpawnMs;
@@ -27,13 +33,15 @@ class CarManager {
     int pickFreeLane();
     long nowMs();
 
-    void spawnLoop();
+    void producerLoop();
     void spawnCars();
     void createCar();
     void removeFinishedCars();
+    void enqueueMoveTasks();
+    void waitUntilTasksDone();
 
-    void moveLoop(int variant);
-    void moveVariant(int variant);
+    void workerLoop();
+    void moveCar(EnemyCar* car);
 
     public:
     CarManager(int windowHeight);
