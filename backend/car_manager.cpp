@@ -48,40 +48,37 @@ void CarManager::stop() {
 
 
 void CarManager::spawnLoop() {
-    while (true) {
-        carMutex.lock();
-        bool stop = stopFlag;
-        carMutex.unlock();
-        if (stop == true) {
-            break;
-        }
+      carMutex.lock();
+      bool stop = stopFlag;
+      carMutex.unlock();
 
-    while (!stop) {
-        spawnCars();
-        removeFinishedCars();
+      while (stop == false) {
+          spawnCars();
+          removeFinishedCars();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+          std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
 
-        carMutex.lock();
-        stop = stopFlag;
-        carMutex.unlock();
-    }
+          carMutex.lock();
+          stop = stopFlag;
+          carMutex.unlock();
+      }
 }
 
 
 void CarManager::moveLoop(int variant) {
-    while (true) {
-        carMutex.lock();
-        bool stop = stopFlag;
-        carMutex.unlock();
-        if (stop == true) {
-            break;
-        }
+      carMutex.lock();
+      bool stop = stopFlag;
+      carMutex.unlock();
+  
+      while (stop == false) {
+          moveVariant(variant);
 
-        moveVariant(variant);
+          std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
-    }
+          carMutex.lock();
+          stop = stopFlag;
+          carMutex.unlock();
+      }
 }
 
 long CarManager::nowMs() {
