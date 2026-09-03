@@ -50,54 +50,39 @@ void CarManager::stop() {
     }
 }
 
-void CarManager::producerLoop() {
-    while (true) {
-        carMutex.lock();
-        bool stop = stopFlag;
-        carMutex.unlock();
-        if (stop == true) {
-            break;
-        }
 
-    while (!stop) {
-        spawnCars();
-        removeFinishedCars();
-        enqueueMoveTasks();
+void CarManager::spawnLoop() {
+      carMutex.lock();
+      bool stop = stopFlag;
+      carMutex.unlock();
 
-        waitUntilTasksDone();
+      while (stop == false) {
+          spawnCars();
+          removeFinishedCars();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+          std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
 
-        carMutex.lock();
-        stop = stopFlag;
-        carMutex.unlock();
-    }
+          carMutex.lock();
+          stop = stopFlag;
+          carMutex.unlock();
+      }
 }
 
-void CarManager::workerLoop() {
-    while (true) {
-        queueMutex.lock();
-        bool hasTask = taskQueue.empty() == false;
-        EnemyCar* car = NULL;
-        if (hasTask == true) {
-            car = taskQueue.front();
-            taskQueue.pop();
-        }
-        queueMutex.unlock();
 
-        if (hasTask == true) {
-            moveCar(car);
-        }
-        else {
-            carMutex.lock();
-            bool stop = stopFlag;
-            carMutex.unlock();
-            if (stop == true) {
-                break;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(IDLE_WAIT_MS));
-        }
-    }
+void CarManager::moveLoop(int variant) {
+      carMutex.lock();
+      bool stop = stopFlag;
+      carMutex.unlock();
+  
+      while (stop == false) {
+          moveVariant(variant);
+
+          std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+
+          carMutex.lock();
+          stop = stopFlag;
+          carMutex.unlock();
+      }
 }
 
 long CarManager::nowMs() {
