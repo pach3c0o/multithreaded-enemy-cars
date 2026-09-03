@@ -5,12 +5,14 @@
 const int SPAWN_INTERVAL_MS = 1200;
 const int SPEED_MIN = 3;
 const int SPEED_RANGE = 4;  // car speed = SPEED_MIN .. SPEED_MIN + SPEED_RANGE - 1 (px/step)
-const int STEP_MS = 16; 
+const int STEP_MS = 16;
+const int IDLE_WAIT_MS = 2; 
 
 CarManager::CarManager(int windowHeight) {
     this->windowHeight = windowHeight;
     this->lastSpawnMs = 0;
     this->stopFlag = false;
+    this->pendingTasks = 0;
 }
 
 CarManager::~CarManager() {
@@ -21,13 +23,15 @@ CarManager::~CarManager() {
     }
 }
 
-// Design 3: spawn/cleanup stay on one thread; one more thread per car
-// variant moves only the cars of its own variant.
+// Design 4: no thread belongs to a car. One producer thread spawns cars,
+// cleans up finished ones, and drops a "move this car" task per active car
+// into a shared queue every tick. A fixed pool of worker threads just pulls
+// tasks off that queue and executes them, whichever car they happen to be.
 void CarManager::start() {
-    spawnThread = std::thread(&CarManager::spawnLoop, this);
+    producerThread = std::thread(&CarManager::producerLoop, this);
 
-    for (int variant = 0; variant < NUM_VARIANTS; variant++) {
-        moveThreads[variant] = std::thread(&CarManager::moveLoop, this, variant);
+    for (int i = 0; i < POOL_SIZE; i++) {
+        workerThreads[i] = std::thread(&CarManager::workerLoop, this);
     }
 }
 
@@ -36,18 +40,17 @@ void CarManager::stop() {
     stopFlag = true;
     carMutex.unlock();
 
-    if (spawnThread.joinable()) {
-        spawnThread.join();
+    if (producerThread.joinable()) {
+        producerThread.join();
     }
-    for (int variant = 0; variant < NUM_VARIANTS; variant++) {
-        if (moveThreads[variant].joinable()) {
-            moveThreads[variant].join();
+    for (int i = 0; i < POOL_SIZE; i++) {
+        if (workerThreads[i].joinable()) {
+            workerThreads[i].join();
         }
     }
 }
 
-
-void CarManager::spawnLoop() {
+void CarManager::producerLoop() {
     while (true) {
         carMutex.lock();
         bool stop = stopFlag;
@@ -58,24 +61,37 @@ void CarManager::spawnLoop() {
 
         spawnCars();
         removeFinishedCars();
+        enqueueMoveTasks();
+
+        waitUntilTasksDone();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
     }
 }
 
-
-void CarManager::moveLoop(int variant) {
+void CarManager::workerLoop() {
     while (true) {
-        carMutex.lock();
-        bool stop = stopFlag;
-        carMutex.unlock();
-        if (stop == true) {
-            break;
+        queueMutex.lock();
+        bool hasTask = taskQueue.empty() == false;
+        EnemyCar* car = NULL;
+        if (hasTask == true) {
+            car = taskQueue.front();
+            taskQueue.pop();
         }
+        queueMutex.unlock();
 
-        moveVariant(variant);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+        if (hasTask == true) {
+            moveCar(car);
+        }
+        else {
+            carMutex.lock();
+            bool stop = stopFlag;
+            carMutex.unlock();
+            if (stop == true) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(IDLE_WAIT_MS));
+        }
     }
 }
 
@@ -129,41 +145,6 @@ void CarManager::createCar() {
     carMutex.unlock();
 }
 
-
-void CarManager::moveVariant(int variant) {
-    carMutex.lock();
-
-    for (int i = 0; i < (int)cars.size(); i++) {
-        EnemyCar* car = cars[i];
-        bool mine = car->getVariant() == variant && car->isFinished() == false;
-
-        if (mine == true) {
-            bool blocked = false;
-            for (int j = 0; j < (int)cars.size(); j++) {
-                if (blocked == false) {
-                    EnemyCar* other = cars[j];
-                    if (other != car && other->getLane() == car->getLane()) {
-                        int gap = other->getY() - car->getY();
-                        if (gap > 0 && gap < CAR_GAP) {
-                            blocked = true;
-                        }
-                    }
-                }
-            }
-
-            if (blocked == false) {
-                car->moveForward();
-            }
-
-            if (car->getY() >= windowHeight) {
-                car->setFinished();
-            }
-        }
-    }
-
-    carMutex.unlock();
-}
-
 void CarManager::removeFinishedCars() {
     std::vector<EnemyCar*> doneCars;
 
@@ -185,6 +166,68 @@ void CarManager::removeFinishedCars() {
     for (int j = 0; j < (int)doneCars.size(); j++) {
         delete doneCars[j];
     }
+}
+
+void CarManager::enqueueMoveTasks() {
+    carMutex.lock();
+    queueMutex.lock();
+
+    for (int i = 0; i < (int)cars.size(); i++) {
+        if (cars[i]->isFinished() == false) {
+            taskQueue.push(cars[i]);
+            pendingTasks = pendingTasks + 1;
+        }
+    }
+
+    queueMutex.unlock();
+    carMutex.unlock();
+}
+
+void CarManager::waitUntilTasksDone() {
+    bool done = false;
+    while (done == false) {
+        queueMutex.lock();
+        done = pendingTasks == 0;
+        queueMutex.unlock();
+
+        if (done == false) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(IDLE_WAIT_MS));
+        }
+    }
+}
+
+void CarManager::moveCar(EnemyCar* car) {
+    carMutex.lock();
+
+    bool finished = car->isFinished();
+    if (finished == false) {
+        bool blocked = false;
+        for (int j = 0; j < (int)cars.size(); j++) {
+            if (blocked == false) {
+                EnemyCar* other = cars[j];
+                if (other != car && other->getLane() == car->getLane()) {
+                    int gap = other->getY() - car->getY();
+                    if (gap > 0 && gap < CAR_GAP) {
+                        blocked = true;
+                    }
+                }
+            }
+        }
+
+        if (blocked == false) {
+            car->moveForward();
+        }
+
+        if (car->getY() >= windowHeight) {
+            car->setFinished();
+        }
+    }
+
+    carMutex.unlock();
+
+    queueMutex.lock();
+    pendingTasks = pendingTasks - 1;
+    queueMutex.unlock();
 }
 
 std::vector<CarState> CarManager::getSnapshot() {
