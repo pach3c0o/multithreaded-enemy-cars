@@ -56,10 +56,15 @@ void CarManager::spawnLoop() {
             break;
         }
 
+    while (!stop) {
         spawnCars();
         removeFinishedCars();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+
+        carMutex.lock();
+        stop = stopFlag;
+        carMutex.unlock();
     }
 }
 
