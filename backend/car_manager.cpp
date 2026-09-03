@@ -176,7 +176,6 @@
           else {
               i = i + 1;
           }
-          }
       }
       
       carMutex.unlock();
