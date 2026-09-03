@@ -37,19 +37,20 @@ void CarManager::stop() {
 
 // Design 2: one thread spawns, moves and cleans up every car.
 void CarManager::updateLoop() {
-    while (true) {
-        carMutex.lock();
-        bool stop = stopFlag;
-        carMutex.unlock();
-        if (stop == true) {
-            break;
-        }
+    carMutex.lock();
+    bool stop = stopFlag;
+    carMutex.unlock();
 
+    while (!stop) {
         spawnCars();
         updateAll();
         removeFinishedCars();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(STEP_MS));
+
+        carMutex.lock();
+        stop = stopFlag;
+        carMutex.unlock();
     }
 }
 
