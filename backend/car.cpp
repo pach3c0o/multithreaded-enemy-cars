@@ -30,7 +30,6 @@ int EnemyCar::getVariant() {
     return this->variant;
 }
 
-// Only the update thread touches these, so no lock is needed here.
 bool EnemyCar::isFinished() {
     return this->finished;
 }

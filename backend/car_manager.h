@@ -18,7 +18,8 @@ class CarManager {
     private:
     std::mutex carMutex;
     std::vector<EnemyCar*> cars;
-    std::thread updateThread;
+    std::thread spawnThread;
+    std::thread moveThreads[NUM_VARIANTS];
     bool stopFlag;
     int windowHeight;
     long lastSpawnMs;
@@ -26,11 +27,13 @@ class CarManager {
     int pickFreeLane();
     long nowMs();
 
-    void updateLoop();
+    void spawnLoop();
     void spawnCars();
     void createCar();
-    void updateAll();
     void removeFinishedCars();
+
+    void moveLoop(int variant);
+    void moveVariant(int variant);
 
     public:
     CarManager(int windowHeight);
