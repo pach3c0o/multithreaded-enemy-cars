@@ -1,55 +1,47 @@
-#ifndef CAR_MANAGER_H
-#define CAR_MANAGER_H
+  #ifndef CAR_MANAGER_H
+  #define CAR_MANAGER_H
 
-#include <vector>
-#include <queue>
-#include <thread>
-#include <mutex>
-#include "car.h"
+  #include <vector>
+  #include <thread>
+  #include <mutex>
+  #include "car.h"
+  
 
-const int POOL_SIZE = 4;
+  struct CarState {
+      int id;
+      int lane;
+      int y;
+      int variant;
+  };
 
-struct CarState {
-    int id;
-    int lane;
-    int y;
-    int variant;
-};
+  class CarManager {
+      private:
+      std::mutex carMutex;
+      std::vector<EnemyCar*> cars;
+      std::thread spawnThread;
+      std::thread moveThreads[NUM_VARIANTS];
+      bool stopFlag;
+      int windowHeight;
+      long lastSpawnMs;
 
-class CarManager {
-    private:
-    std::mutex carMutex;    
-    std::mutex queueMutex; 
-    std::vector<EnemyCar*> cars;
-    std::queue<EnemyCar*> taskQueue;
-    int pendingTasks;  
+      int pickFreeLane();
+      long nowMs();
 
-    std::thread producerThread;
-    std::thread workerThreads[POOL_SIZE];
-    bool stopFlag;
-    int windowHeight;
-    long lastSpawnMs;
+      void spawnLoop();
+      void spawnCars();
+      void createCar();
+      void removeFinishedCars();
+  
+      void moveLoop(int variant);
+      void moveVariant(int variant);
 
-    int pickFreeLane();
-    long nowMs();
+      public:
+      CarManager(int windowHeight);
+      ~CarManager();
 
-    void producerLoop();
-    void spawnCars();
-    void createCar();
-    void removeFinishedCars();
-    void enqueueMoveTasks();
-    void waitUntilTasksDone();
+      void start();
+      void stop();
+      std::vector<CarState> getSnapshot();
+  };
 
-    void workerLoop();
-    void moveCar(EnemyCar* car);
-
-    public:
-    CarManager(int windowHeight);
-    ~CarManager();
-
-    void start();
-    void stop();
-    std::vector<CarState> getSnapshot();
-};
-
-#endif
+  #endif
